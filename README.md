@@ -51,6 +51,12 @@ Compilation of OS in Rust, with an x86 arch, a linker and iso image bootable wit
     - it defines memory layout for your kernel and establishes how different sections of the asm code will be organized in memory.
 4- grub.cfg: indiquer a grub le binaire, notre image
 
+### GDTR
+
+- Creation de 7 entrees : null, kernel/user, code/data/stack
+- Creation d'un octet d'acces 0x96/0xF6 pour que le CPU detecte les stackoverflows
+- Copy la GDT a l'adresse 0x00000800, construit le pseudo-descriptor (limit/base) et prepare un pointeur vers le kernel_main
+- Charge le pointeur, recharge les segments, bascule StackSegment+ESP sur la stack kernel defini en ASM puis `ljmp` pour recharger CodeSegment sur le selecteur kernel code.
 
 ### VGA buffer
 
