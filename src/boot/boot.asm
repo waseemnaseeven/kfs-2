@@ -1,39 +1,75 @@
-; Multiboot header for the kernel
-MBALIGN  equ  1 << 0            ; Align loaded modules on page boundaries (value = 1)
-MEMINFO  equ  1 << 1            ; Provide memory map (value = 2)
-MBFLAGS  equ  MBALIGN | MEMINFO  ; Multiboot 'flag' field
-MAGIC    equ  0x1BADB002        ; Magic number for the bootloader to find the header
-CHECKSUM equ -(MAGIC + MBFLAGS) ; Checksum for Multiboot compliance
+; =============================================================================
+; Bootloader entry stub for a Multiboot-compliant kernel
+; =============================================================================
+; This assembly file provides:
+;   - A valid Multiboot header (recognized by GRUB and other multiboot loaders)
+;   - A simple stack setup (16 KiB)
+;   - A call into the Rust kernel entry point (_start_kernel)
+;     using the cdecl ABI with (magic, mbi) taken from EAX/EBX
+;   - A safe infinite halt loop after returning
+; =============================================================================
 
-; Export stack bounds so the Rust code can inspect them
-global stack_bottom
-global stack_top
+[BITS 32]
 
-; Multiboot header indicating the program is a kernel
+; -----------------------------------------------------------------------------
+; Multiboot header constants
+; -----------------------------------------------------------------------------
+MBALIGN   equ 1 << 0                  ; Align modules on page boundaries
+MEMINFO   equ 1 << 1                  ; Request memory map from bootloader
+MBFLAGS   equ MBALIGN | MEMINFO       ; Combine flags
+MAGIC     equ 0x1BADB002              ; Required "magic number"
+CHECKSUM  equ -(MAGIC + MBFLAGS)      ; Ensure (magic + flags + checksum) == 0
+
+; -----------------------------------------------------------------------------
+; Multiboot header (must be in the first 8 KiB of the kernel binary)
+; -----------------------------------------------------------------------------
 section .multiboot
 align 4
-    dd MAGIC                    ; Magic number
-    dd MBFLAGS                  ; Multiboot flags
-    dd CHECKSUM                 ; Checksum, must be zero at the end
+    dd MAGIC                          ; Magic number for multiboot compliance
+    dd MBFLAGS                        ; Flags requested from the bootloader
+    dd CHECKSUM                       ; Ensures validity of header
 
-; .bss section for uninitialized variables, including the stack
+; -----------------------------------------------------------------------------
+; Uninitialized data section (.bss)
+; Reserve 16 KiB for the initial stack (simple static stack)
+; -----------------------------------------------------------------------------
 section .bss
+global stack_bottom
+global stack_top
 align 16
-stack_bottom:                     ; Label for the start of the stack space
-    resb 16384                    ; Reserve 16 KiB for the kernel_stack
-stack_top:                        ; Label for the top of the stack
+stack_bottom:                         ; Bottom of stack (lowest address)
+    resb 16384                        ; 16 KiB reserved for stack
+stack_top:                            ; Label for top of stack (highest address)
 
-; .text section contains the executable code of the kernel
+; -----------------------------------------------------------------------------
+; Kernel entry point
+; GRUB jumps here after loading the kernel into memory.
+; -----------------------------------------------------------------------------
 section .text
-global _start                    ; Declare _start as a global symbol for the bootloader
-_start:                         ; Entry point of the kernel
-    mov esp, stack_top          ; Initialize stack pointer (ESP) to the top of the stack
-    extern _start_kernel         ; Declare external reference to _start_kernel
-    call _start_kernel           ; Call the kernel initialization function
-    cli                          ; Disable interrupts for critical operations
+global _start
+_start:
+    ; Initialize stack pointer (ESP) to the top of our reserved stack
+    mov esp, stack_top
 
-.hang:                            ; Infinite loop to halt the CPU
-    hlt                          ; Halt the CPU until the next interrupt
-    jmp .hang                   ; Jump back to the hang label to create an infinite loop
+    ; GRUB provides:
+    ;   EAX = 0x2BADB002 (Multiboot magic)
+    ;   EBX = pointer to multiboot_info structure
+    ;
+    ; Pass them to Rust (cdecl): push last arg first
+    extern _start_kernel
+    push ebx            ; mbi address (2nd argument)
+    push eax            ; magic value (1st argument)
+    call _start_kernel
+    add esp, 8          ; clean up the stack (cdecl)
 
-section .note.GNU-stack          ; Note for the linker regarding stack properties
+    ; If the kernel ever returns, disable interrupts and halt forever
+    cli
+
+.hang:
+    hlt                                ; Halt CPU until next interrupt
+    jmp .hang                          ; Infinite loop
+
+; -----------------------------------------------------------------------------
+; Mark stack as non-executable (for security, used by some linkers)
+; -----------------------------------------------------------------------------
+section .note.GNU-stack

@@ -2,34 +2,41 @@ ENTRY(_start)
 
 SECTIONS
 {
-	. = 2m;
+	/* entry point */
+	. = 2M;
 
-	.text BLOCK(4K) : ALIGN(4K)
+	/* Multiboot header */
+	.multiboot : ALIGN(4096)
 	{
-		*(.multiboot)
-		*(.text)
-	}
+    	KEEP(*(.multiboot))
+  	}
+
+	/* Code */
+	.text : ALIGN(4096)
+  	{
+    	*(.text .text.*)
+  	}
+
 
 	/* Read-only data. */
-	.rodata BLOCK(4K) : ALIGN(4K)
+	.rodata : ALIGN(4K)
 	{
-		*(.rodata)
+		*(.rodata .rodata.*)
 	}
 
 	/* Read-write data (initialized) */
-	.data BLOCK(4K) : ALIGN(4K)
+	.data : ALIGN(4K)
 	{
-		*(.data)
+		*(.data .data.*)
 	}
 
 	/* Read-write data (uninitialized) and stack */
-	.bss BLOCK(4K) : ALIGN(4K)
+	.bss : ALIGN(4K)
 	{
 		*(COMMON)
-		*(.bss)
+		*(.bss .bss.*)
 	}
 
-	/* Indique que la pile n'est pas exécutable */
-	.note.GNU-stack : {
-    }
+	/DISCARD/ : { *(.eh_frame) *(.comment) }
+  	.note.GNU-stack : { }
 }

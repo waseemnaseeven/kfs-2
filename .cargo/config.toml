@@ -1,0 +1,14 @@
+[unstable]
+build-std = ["core"]
+
+[build]
+target = "i386.json"
+
+[target."i386-unknown-none"]
+linker = "rust-lld"
+rustflags = [
+  "-Zrelro-level=full",
+  "-Zplt=now",
+  "-C", "link-arg=-melf_i386",
+  "-C", "link-arg=--gc-sections",
+]
